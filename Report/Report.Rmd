@@ -734,7 +734,7 @@ biplot(y=reviews.lsa.dfm$docs[,2:3],x=reviews.lsa.dfm$features[,2:3], col=c("gre
 After performing the LSA, we decide to look into the LDA, which is a more recent technique of topic modeling. We must highlight that two assumptions are taken into consideration in this analysis: a small number of topics are present in the corpus and a small number of terms are associated with each topic. For this analysis, we decide to set the number of topics to 4, since we have four hotels. This will enable us to see if we are able to differentiate hotels based on the LDA. 
 
 ```{r}
-## convert quateda object to topicmodels object
+## convert quanteda object to topicmodels object
 set.seed(123)
 K <- 4
 all.dtm <- convert(all.dfm, to = "topicmodels")
@@ -769,7 +769,7 @@ beta.top.terms %>%
   scale_x_reordered() +
   ggtitle("Words associated to topics")
 ```
-Once again, the terms associated to each topic are overlapping. The one topic that seems to differentiate is Topic 2. The latter seems to be associated to the Peninsula Hotel, since the hotel is mentioned and that the words associated to this topic, such as "service" and "experience" are some of the terms that were the more frequent for this hotel.
+Once again, the terms associated to each topic are overlapping. Unfortunately, we cannot see any clear pattern in the betas.
 
 ##### Gammas
 
