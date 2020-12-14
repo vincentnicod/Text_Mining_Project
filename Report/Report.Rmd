@@ -903,6 +903,8 @@ After different trials, we decided to use TF-IDF instead of DFM and LSA instead 
 
 ### Random Forest with a TF-IDF, sentiment analysis and LSA
 ```{r message=FALSE, warning=FALSE}
+set.seed(1)
+
 dfm <- dfm(tokens) %>% dfm_tfidf()
 
 review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
@@ -921,7 +923,6 @@ df <- cbind(df,
 
 
 
-set.seed(1)
 index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
 df.tr <- df[index.tr,]
 df.te <- df[-index.tr,]
@@ -1043,6 +1044,8 @@ y <- factor(docvars(tokens, "Type"))
 
 ### SVM
 ```{r message=FALSE, warning=FALSE}
+set.seed(1)
+
 dfm <- dfm(tokens) %>% dfm_tfidf()
 
 review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
@@ -1057,7 +1060,6 @@ df <- cbind(df,
             date = docvars(tokens, c("date"))
 )
 
-set.seed(1)
 index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
 df.tr <- df[index.tr,]
 df.te <- df[-index.tr,]
