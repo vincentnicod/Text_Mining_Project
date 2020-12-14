@@ -893,7 +893,7 @@ pred.te <- predict(Hotel.fit, df.te)
 # max_value <- accuracy %>% dplyr::arrange(desc(acc.lda)) %>% head(5)
 # print(max_value)
 ```
-In this model, we try to use a random forest with the DFM and LDA. We obtain a maximum accuracy of `r confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)$overall[1]` with 43 nodes. The details can be seen in the following confusion matrix.
+In this model, we try to use a random forest with the DFM and LDA. We obtain a maximum accuracy of `r confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)$overall[1]` with 43 nodes. This number of nodes has been obtained through some hyperparameter tuning. The details can be seen in the following confusion matrix.
 
 ```{r}
 confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)$table %>% kable(caption = "Confusion matrix") %>% kable_styling(bootstrap_options = c("striped", "hover"), position = "center", full_width = FALSE)
@@ -930,7 +930,7 @@ Hotel.fit <- ranger(Hotel ~ .,
                      data = df.tr, importance = "impurity")
 pred.te <- predict(Hotel.fit, df.te)
 ```
-This time, we reach an accuracy of `r confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)$overall[1]` with a random forest using TF-IDF, LSA, and the sentiment of the review as a feature. The details can be seen in the following confusion matrix.
+This time, we reach an accuracy of `r confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)$overall[1]` with a random forest using TF-IDF, LSA, and the sentiment of the review as a feature. We selected 14 topics in the LSA as a result of a hyperparameter tuning. The details can be seen in the following confusion matrix.
 
 ```{r}
 confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)$table %>% kable(caption = "Confusion matrix") %>% kable_styling(bootstrap_options = c("striped", "hover"), position = "center", full_width = FALSE)
@@ -1068,7 +1068,7 @@ df.te <- df[-index.tr,]
 svm.model <- svm(Type ~ ., data = df.tr, kernel="radial")
 svm.pred  <- predict(svm.model, df.te)
 ```
-With this SVM model using TF-IDF and LSA, we reach an accuracy of `r confusionMatrix(data=svm.pred, reference = df.te$Type)$overall[1]`. We can see that our model is very good at predicting only the class of the hotel. The details can be seen in the following confusion matrix.
+With this SVM model using TF-IDF and LSA, we reach an accuracy of `r confusionMatrix(data=svm.pred, reference = df.te$Type)$overall[1]`. As we did in the previous section, we selected the number of topics of the LSA (18) through some hyperparameter tuning. As a result, we can see that our model is very good at predicting only the class of the hotel. The details can be seen in the following confusion matrix.
 
 ```{r}
 confusionMatrix(data=svm.pred, reference = df.te$Type)$table %>% kable(caption = "Confusion matrix") %>% kable_styling(bootstrap_options = c("striped", "hover"), position = "center", full_width = FALSE)
