@@ -1,0 +1,638 @@
+---
+title: "four_hotels"
+date: "12/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE)
+```
+
+
+```{r message=FALSE, include=FALSE}
+library(tidyverse)
+library(tidytext)
+library(readr)
+library(tokenizers)
+library(quanteda)
+library(lexicon) 
+library(sentimentr)
+library(topicmodels)
+library(quanteda.textmodels)
+library(kableExtra)
+library(reshape2)
+```
+
+# Introduction
+
+As part of the course "Text Mining", we have decided to analyze the reviews of different hotels. The aim of the project is to see if a model is capable of recognizing and predict a hotel based on its reviews. The ones considered for this analysis are the Econo Lodge Times Square, the Hotel St. James, the Four Season and the Peninsula. All of them are located in New York.
+
+To begin, we scrap the data from Tripadvisor. For clarity purposes, we will use 50 reviews per hotel for the EDA analysis. However, we will consider 500 reviews for the Modeling section.
+
+```{r include=FALSE}
+#load data from overall_scrap
+load(file = "Data/data_scrap.RData")
+```
+
+To begin the analysis, we start by converting the type of the reviews to the "character" type.
+
+```{r include=FALSE}
+#convert review type to character
+econo_review$review <- as.character(econo_review$review) 
+four_seasons_review$review <- as.character(four_seasons_review$review)
+peninsula_review$review <- as.character(peninsula_review$review)
+st_james_review$review <- as.character(st_james_review$review)
+```
+
+
+# Exploratory Data Analysis
+
+In order to debute the exploratory data analysis, we must start by cleaning the data. In other words, we must first create the different corpuses, before proceeding with the tokenization. The latter includes removing numbers, punctuations signs and other special characters. Following this, we perform the lemmatization task and remove stop words.
+
+```{r, echo=FALSE}
+## Create corpus
+
+#Econo Lodge
+econo_reviews.tb <- as_tibble(data.frame(econo_review))
+econo_reviews.cp <- corpus(econo_review$review)
+#summary(econo_reviews.cp)
+
+#Four Seasons
+four_seasons_reviews.tb <- as_tibble(data.frame(four_seasons_review))
+four_seasons_reviews.cp <- corpus(four_seasons_review$review)
+#summary(fseasons_reviews.cp)
+
+#Peninsula
+peninsula_reviews.tb <- as_tibble(data.frame(peninsula_review))
+peninsula_reviews.cp <- corpus(peninsula_review$review)
+#summary(peninsula_reviews.cp)
+
+#St-James
+st_james_reviews.tb <- as_tibble(data.frame(st_james_review))
+st_james_reviews.cp <- corpus(st_james_review$review)
+#summary(st_james_reviews.cp)
+
+#simplifier avec un for loop?
+```
+
+
+```{r, echo=FALSE}
+## Tokenization
+
+#Econo Lodge
+econo_reviews.tok <- tokens(econo_reviews.cp, remove_numbers=TRUE, remove_punct=TRUE, remove_symbols=TRUE, remove_separators=TRUE)
+
+econo_reviews.tok <- econo_reviews.tok %>% tokens_tolower() %>% tokens_replace(pattern=hash_lemmas$token, replacement = hash_lemmas$lemma) %>% tokens_remove(stopwords("english"))
+
+#Four Seasons
+four_seasons_reviews.tok <- tokens(four_seasons_reviews.cp, remove_numbers=TRUE, remove_punct=TRUE, remove_symbols=TRUE, remove_separators=TRUE)
+
+four_seasons_reviews.tok <-four_seasons_reviews.tok %>% tokens_tolower() %>% tokens_replace(pattern=hash_lemmas$token, replacement = hash_lemmas$lemma) %>% tokens_remove(stopwords("english"))
+
+#Peninsula
+peninsula_reviews.tok <- tokens(peninsula_reviews.cp, remove_numbers=TRUE, remove_punct=TRUE, remove_symbols=TRUE, remove_separators=TRUE)
+
+peninsula_reviews.tok <-peninsula_reviews.tok %>% tokens_tolower() %>% tokens_replace(pattern=hash_lemmas$token, replacement = hash_lemmas$lemma) %>% tokens_remove(stopwords("english"))
+
+#St-James
+st_james_reviews.tok <- tokens(st_james_reviews.cp, remove_numbers=TRUE, remove_punct=TRUE, remove_symbols=TRUE, remove_separators=TRUE)
+
+st_james_reviews.tok <-st_james_reviews.tok %>% tokens_tolower() %>% tokens_replace(pattern=hash_lemmas$token, replacement = hash_lemmas$lemma) %>% tokens_remove(stopwords("english"))
+
+#simplifier avec un for loop?
+#H: J'ai fait le lemmatization et j'ai enlevé les stops words aussi
+```
+
+
+## DFM {.tabset}
+The Document Term Matrix allows to represent the corpus by a matrix, in which the rows represent the different reviews (documents) and the columns, the types of tokens that are present in the corpus. Additionally, the frequencies are given in the cells.
+This analysis is done for all four hotels.
+
+### Econo lodge
+```{r echo=FALSE}
+econo.dfm <- dfm(econo_reviews.tok)
+head(econo.dfm, 5)
+```
+
+### St-James
+```{r echo=FALSE}
+st_james.dfm <- dfm(st_james_reviews.tok)
+head(st_james.dfm, 5)
+```
+
+### Four Seasons
+```{r echo=FALSE}
+four_seasons.dfm <- dfm(four_seasons_reviews.tok)
+head(four_seasons.dfm, 5)
+```
+
+### Peninsula
+
+```{r echo=FALSE}
+peninsula.dfm <- dfm(peninsula_reviews.tok)
+head(peninsula.dfm, 5)
+```
+
+## TF-IDF {.tabset}
+
+The TF-IDF analysis enables to invert the frequencies. In this way, the frequency of highly frequent terms that bring little information will be reduced to 0. On the other hand, the frequencies of document-specific terms will be increased. This will allow us to better understand what are the terms that are specific to each document. 
+
+### Econo lodge
+
+```{r echo=FALSE}
+econo.tfidf <- dfm_tfidf(econo.dfm)
+head(econo.tfidf, 5)
+```
+### St-James
+
+```{r echo=FALSE}
+st_james.tfidf <- dfm_tfidf(st_james.dfm)
+head(st_james.tfidf, 5)
+```
+
+### Four Seasons
+
+```{r echo=FALSE}
+four_seasons.tfidf <- dfm_tfidf(four_seasons.dfm)
+head(four_seasons.tfidf, 5)
+```
+
+### Peninsula
+
+```{r echo=FALSE}
+peninsula.tfidf <- dfm_tfidf(peninsula.dfm)
+head(peninsula.tfidf, 5)
+```
+
+The DTM and TF-IDF analyses reveal that the these matrices are very sparse for all four hotels. In other words, they are mostly empty and provide little information. In this way, we believe that performing dimension reduction techniques will be necessary. 
+
+## Term Frequency {.tabset}
+
+Then, we investigate what are the most frequent terms in the reviews of each hotels.
+
+### Econo lodge
+
+```{r echo=FALSE}
+econo.freq <- textstat_frequency(econo.dfm)
+head(econo.freq, 5)
+```
+
+### St-James
+
+```{r echo=FALSE}
+st_james.freq <- textstat_frequency(st_james.dfm)
+head(st_james.freq, 5)
+```
+
+### Four Seasons
+
+```{r echo=FALSE}
+four_seasons.freq <- textstat_frequency(four_seasons.dfm)
+head(four_seasons.freq, 5)
+```
+
+### Peninsula
+
+```{r echo=FALSE}
+peninsula.freq <- textstat_frequency(peninsula.dfm)
+head(peninsula.freq, 5)
+```
+
+The analysis of the most frequent terms for each of the hotels show that the terms "hotel", "room" and "stay" are common to all hotels and are very frequent, even though they are not stop words. It is interesting to remove them since they are not specific to any hotel and thus do not bring any information.
+
+## Removal of frequent terms that are not stop words
+
+```{r include=FALSE}
+econo_reviews.tok <- econo_reviews.tok %>% tokens_remove(c("hotel", "room", "stay"))
+four_seasons_reviews.tok <- four_seasons_reviews.tok %>% tokens_remove(c("hotel", "room", "stay"))
+peninsula_reviews.tok <-peninsula_reviews.tok %>% tokens_remove(c("hotel", "room", "stay"))
+st_james_reviews.tok <-st_james_reviews.tok %>% tokens_remove(c("hotel", "room", "stay"))
+```
+
+## Second Analysis of TF
+
+We now compute again the term frequencies to see if any modifications can be seen.
+
+### Econo lodge
+```{r echo=FALSE}
+econo.dfm2 <- dfm(econo_reviews.tok)
+econo.tfidf2 <- dfm_tfidf(econo.dfm2)
+econo.freq2 <- textstat_frequency(econo.dfm2)
+head(econo.freq2, 5)
+```
+
+### St-James
+```{r echo=FALSE}
+st_james.dfm2 <- dfm(st_james_reviews.tok)
+st_james.tfidf2 <- dfm_tfidf(st_james.dfm2)
+st_james.freq2 <- textstat_frequency(st_james.dfm2)
+head(st_james.freq2, 5)
+
+```
+
+
+### Four Seasons
+```{r echo=FALSE}
+four_seasons.dfm2 <- dfm(four_seasons_reviews.tok)
+four_seasons.tfidf2 <- dfm_tfidf(four_seasons.dfm2)
+four_seasons.freq2 <- textstat_frequency(four_seasons.dfm2)
+head(four_seasons.freq2, 5)
+```
+
+### Peninsula
+```{r echo=FALSE}
+peninsula.dfm2 <- dfm(peninsula_reviews.tok)
+peninsula.tfidf2 <- dfm_tfidf(peninsula.dfm2)
+peninsula.freq2 <- textstat_frequency(peninsula.dfm2)
+head(peninsula.freq2, 5)
+```
+
+We can see that this time we observe some differences between the most frequent terms of the different hotels. To further explain, the 2-star hotels, that are the Econo Lodge Times Square and the Hotel St.James, have frequent terms such as "time", "clean", "location" and bed", among others. This shows that the reviewers seem to point out the functionality aspect of the hotel. 
+
+Whereas, the 5-star hotel have frequent terms such as "service" and "staff", which highlights that the reviewers seem to appreciate the guest and service-oriented aspects of those hotels. This is what is expected, since 2-star hotels generally provide basic functional services. On the other hand, 5-star hotels focus on delivering exceptional experiences to their guests.
+
+Even though "good" and "great" are very frequent and common terms, we decide to keep them since they will have an impact on the sentiment analysis.
+
+
+## Word cloud DFM {.tabset}
+
+To better visualize the term frequencies, we proceed with the cloud of words. We decided to use only the DFM matrix since the TF-IDF one provided similar results.
+
+### Econo lodge
+```{r echo=FALSE}
+textplot_wordcloud(econo.dfm2)
+```
+
+### St-James
+```{r echo=FALSE}
+textplot_wordcloud(st_james.dfm2)
+```
+
+### Four Seasons
+```{r echo=FALSE}
+textplot_wordcloud(four_seasons.dfm2)
+```
+
+### Peninsula
+```{r echo=FALSE}
+textplot_wordcloud(peninsula.dfm2)
+```
+
+The cloud of words confirm our previous assumption, that is that the 2-star hotel reviewers focus essentially on the functional aspect of the hotel. Whereas, the 5-star hotel reviewers are more sensible to the overall experiences within the hotels.
+
+## Zipf's Law with log {.tabset}
+
+We now illustrate Zipf's law on our data. This enables us to see the distribution of words used in the corpuses. The following plots helps us to see what are the terms that are the most frequent and thus are likely to stay in the same proportions if the corpuses are doubled.
+
+### Econo lodge
+
+```{r echo=FALSE}
+plot(log(frequency)~log(rank), data=econo.freq2, pch=20)
+text(log(frequency)~log(rank), data=econo.freq2[1:3,], label=feature, pos=4)
+
+(mod.zipf <- lm(log(frequency)~log(rank), data=econo.freq2))
+abline(coef(mod.zipf))
+```
+
+### St-James
+
+```{r echo=FALSE}
+plot(log(frequency)~log(rank), data=st_james.freq2, pch=20)
+text(log(frequency)~log(rank), data=st_james.freq2[1:3,], label=feature, pos=4)
+
+(mod.zipf <- lm(log(frequency)~log(rank), data=st_james.freq2))
+abline(coef(mod.zipf))
+```
+
+
+### Four Seasons
+
+```{r echo=FALSE}
+plot(log(frequency)~log(rank), data=four_seasons.freq2, pch=20)
+text(log(frequency)~log(rank), data=four_seasons.freq2[1:3,], label=feature, pos=4)
+
+(mod.zipf <- lm(log(frequency)~log(rank), data=four_seasons.freq2))
+abline(coef(mod.zipf))
+```
+
+### Peninsula
+
+```{r echo=FALSE}
+plot(log(frequency)~log(rank), data=peninsula.freq2, pch=20)
+text(log(frequency)~log(rank), data=peninsula.freq2[1:3,], label=feature, pos=4)
+
+(mod.zipf <- lm(log(frequency)~log(rank), data=peninsula.freq2))
+abline(coef(mod.zipf))
+```
+
+## Sentiment Analysis {.tabset}
+
+The next part of the analysis focuses on uncovering what are the sentiments associated to each of the hotels.
+
+### Econo Lodge
+
+```{r echo=FALSE}
+econo_reviews.sent <- tokens_lookup(econo_reviews.tok, dictionary = data_dictionary_LSD2015) %>% dfm() %>% tidy()
+ggplot(econo_reviews.sent,aes(y=document, x=count, fill=term)) + 
+  geom_bar(stat="identity") +
+  theme_bw()
+```
+
+### St-James
+```{r echo=FALSE}
+st_jamesreviews.sent <- tokens_lookup(st_james_reviews.tok, dictionary = data_dictionary_LSD2015) %>% dfm() %>% tidy()
+ggplot(st_jamesreviews.sent,aes(y=document, x=count, fill=term)) + 
+  geom_bar(stat="identity") +
+  theme_bw()
+```
+
+### Four Seasons
+```{r echo=FALSE}
+four_seasons_reviews.sent <- tokens_lookup(econo_reviews.tok, dictionary = data_dictionary_LSD2015) %>% dfm() %>% tidy()
+ggplot(four_seasons_reviews.sent,aes(y=document, x=count, fill=term)) + 
+  geom_bar(stat="identity") +
+  theme_bw()
+```
+
+### Peninsula
+```{r echo=FALSE}
+peninsula_reviews.sent <- tokens_lookup(peninsula_reviews.tok, dictionary = data_dictionary_LSD2015) %>% dfm() %>% tidy()
+ggplot(peninsula_reviews.sent,aes(y=document, x=count, fill=term)) + 
+  geom_bar(stat="identity") +
+  theme_bw()
+```
+
+When conducting a sentiment analysis on the reviews of the different hotels, we realize that they are mainly positive, but have also negative elements. None of the four hotels distiguishes itself on this attribute. However, one can notice that the Peninsula is the hotel that has the most positive sentiment since among all its reviews considered, none is fully negative, in contrary to the other hotels that have at least one fully negative associated review.
+
+We then performed a valence shifter analysis to see if better results could be obtained. Unfortunately, the results were not conclusive so we decided not to integrate it in the report. We believe that we obtained similar results since the length of the reviews are very small, therefore reviewers go straight to the point without integrating amplifiers/de-amplifiers nor adversary conjunctions, for instance. 
+
+Now that we have analyzed each hotel individually, we will proceed with the rest of the EDA by combining the datasets of all hotels together. We believe that better results could be obtained regarding Lexical Diversity, Topic Modeling, Word Embedding, Clustering and Keyness, when considering differences between hotels than within hotels. On a side note, those analyses were initially tested on each hotel individually, but were not conclusive.
+
+## Four Hotel Analysis
+
+We start by creating this new dataset that regroups 25 reviews of each hotel. We reduce the number of reviews per hotel for visualization purposes. Additionally, the first 50 reviews represent the 2-star hotels and the last 50, the 5-star ones. We then perform the same cleaning (tokenization, lemmatization and stopwords removal) process done previously.
+
+```{r}
+Reviews_500_w_ratings <- read_rds(here::here(file = "Reviews_500_w_ratings.rds"))
+
+reviews <- Reviews_500_w_ratings[c(1:25,501:525,1001:1025, 1501:1525),]
+
+```
+
+```{r}
+all.cp <- corpus(reviews$review)
+
+all.tk <- tokens(all.cp, remove_numbers=TRUE, remove_punct=TRUE, remove_symbols=TRUE, remove_separators=TRUE)
+
+all.tk <- all.tk %>% tokens_tolower() %>% tokens_replace(pattern=hash_lemmas$token, replacement = hash_lemmas$lemma) %>% tokens_remove(stopwords("english")) %>% tokens_remove(c("hotel", "room", "stay"))
+```
+
+### Creation of DTM and TF- IDF objects
+
+We also create the DTM and TF-IDF objects done previously.
+
+```{r}
+all.dfm <- dfm(all.tk)
+all.tfidf <- dfm_tfidf(all.dfm)
+```
+
+### Lexical diversity{.tabset}
+
+Our next analysis focuses on uncovering if the richness of the vocabulary used in the reviews, can be a discriminant feature to distinguish 2-star hotel guests from 5-star hotel ones.
+
+#### Token-Type Ratio 
+
+We begin by computing the Token-Type Ratio (TTR).
+
+```{r echo=FALSE}
+reviews.div.TTR <- textstat_lexdiv(all.dfm, measure = "I")
+reviews.div.TTR %>% 
+  ggplot(aes(x=reorder(document, I), y=I)) +
+  geom_point() +
+  coord_flip() +
+  xlab("Text") + 
+  ylab("Yule's index") +
+  theme_bw()
+```
+As we can observe from the plot above, there is indeed a difference in the richness of the different reviews. However, we cannot differentiate the 2-star reviewers from the 5-star ones, since texts 1-50 and texts 51-100 are not clearly seperated on the graph. We are now going to use the Moving Average TTR to see if better results can be achieved.
+
+#### MATTR 
+
+```{r echo=FALSE}
+reviews.div.MATTR <- textstat_lexdiv(all.tk, measure = "MATTR", MATTR_window = 10)
+reviews.div.MATTR %>% 
+  ggplot(aes(x=reorder(document, MATTR), y=MATTR)) +
+  geom_point() +
+  coord_flip() +
+  xlab("Text") + 
+  ylab("MATTR") +
+  theme_bw()
+```
+As presented above, the MATTR does not achieve better results than the TTR. This means that the Lexical Diversity does not appear to be a discriminant feature between 2-star reviewers and 5-star reviewers. 
+
+### Clustering{.tabset}
+
+#### Based on Euclidean Distance
+
+We then proceed with the clustering anaylsis, to see if we are able to differentiate the different hotels based on the reviews. Several methods were used to perform the similarity (Jaccard and Cosine) and dissimilarity (Euclidean and Manhattan) analyses, in order to compute the clustering. Since, they were all showing similar results, we decided to focus only on the Euclidean distance, as it is the most common. 
+
+```{r}
+all.euc <- textstat_dist(all.tfidf, method = "euclidean", margin = "documents")
+all.hc.euc <- hclust(dist(all.euc))
+plot(all.hc.euc)
+```
+As mentioned previously, texts 1-50 are 2-star hotels, whereas texts 51-100 are 5-star ones. Unfortunately, the clustering does not help in uncovering any pattern to distinguish the hotels among themselves nor to differentiate 2-star hotels from 5-star ones. 
+
+We decide to investigate further the clusters, by focusing on four of them. We choose to look at the ten terms that characterizes them the most.
+
+```{r}
+
+all.clust <- cutree(all.hc.euc, k=4)
+
+
+clusters <- data.frame(
+  Clust.1 = names(sort(apply(all.tfidf[all.clust==1,],2,sum), decreasing = TRUE)[1:10]),
+  Clust.2 = names(sort(apply(all.tfidf[all.clust==2,],2,sum), decreasing = TRUE)[1:10]),
+  Clust.3 = names(sort(apply(all.tfidf[all.clust==3,],2,sum), decreasing = TRUE)[1:10]),
+  Clust.4 = names(sort(apply(all.tfidf[all.clust==4,],2,sum), decreasing = TRUE)[1:10]))
+
+clusters %>% kable()
+
+```
+By looking further into the clusters, it is once again difficult to differentiate them. However, Cluster 4 seems to be mentioning a lot the Peninsula, so we could associate cluster 4 to that hotel. 
+On another note, Cluster 1 mentions "Times Square" which is part of the name of the Econo Lodge Times Square. Furthermore, "clean" and "small" were frequent terms associated to that hotel when performing the individual analyses. So one could assume that Cluster 1 represents that 2-star hotel.
+Lastly and more implicitely, one could assume that Cluster 2 would be more associated to the Four Season, since the terms characterizing it are more service-oriented. Whereas, Cluster 3 would probably be associated to the Hotel St.James, since the terms are more functionally-oriented.
+
+#### Based on the Relaxed Word Mover's Distance (RWMD)
+
+We are now going to look if better results can be achieved using the RWMD. This dissimilarity measure is based on "how much change" is needed to transform one text into another. In other terms, it measures the minimal distance to travel in the word embedding space to reach another document. 
+
+```{r}
+library(text2vec)
+#word embedding
+review.coo <- fcm(all.tk, context="window", window = 5, tri=FALSE) 
+
+#GloVe
+p <- 2 
+speech.glove <- GlobalVectors$new(rank = p, x_max = 10) # x_max is a needed technical option
+speech.weC <- speech.glove$fit_transform(review.coo)
+
+review.we <- t(speech.glove$components)+speech.weC # unique representation
+
+#DTM and RWMD
+all.rwmd.model <- RelaxedWordMoversDistance$new(all.dfm, review.we)
+all.rwms <- all.rwmd.model$sim2(all.dfm)
+all.rwmd <- all.rwmd.model$dist2(all.dfm)
+
+#plot
+all.hc.rwmd <- hclust(as.dist(all.rwmd))
+plot(all.hc.rwmd, cex=0.8)
+```
+Once again, clusters are not very clear and do not help to differentiate among hotels nor hotel categories.
+
+### Word & Document Embedding {.tabset}
+
+We are now computing the Word Embedding to see what are the words used in the same contexts. Also, the Document Embedding anaylsis will be performed to see Which texts are used in the same contexts, as well. 
+
+#### Word Embedding 
+
+We focus on the 50 words that are the most used. 
+
+```{r}
+n.w <- apply(dfm(all.tk),2,sum) ## compute the number of times ech term is used
+index <- order(n.w, decreasing = TRUE)[1:50] # select the row-number corresponding to the 50 largest n.w
+
+plot(review.we[index,], type='n',  xlab="Dim 1", ylab="Dim 2")
+text(x=review.we[index,], labels=rownames(review.we[index,]))
+```
+What can be retrieved from the word embedding, is that the Peninsula is often used in the same context as "comfortable", "nice" and "bar". We can also notice that when the "service" is mentioned, it is often in the context of "friendly". As highlighted previsouly, "service" was a frequent term of the 5-star hotels. Unsuprisingly, we have words such as "four" and "season" that are often used in the same context. Similarly, "front" and "desk" are also used in the same context.
+
+#### Document Embedding 
+
+We do the same analysis for the documents, to uncover what texts are used in the same context.
+
+```{r}
+nd <- length(all.tk) # number of documents
+review.de <- matrix(nr=nd, nc=p) # document embedding matrix (1 document per row)
+for (i in 1:nd){
+  words_in_i <- review.we[all.tk[[i]],]
+  review.de[i,] <- apply(words_in_i,2,mean)
+}
+row.names(review.de) <- names(all.cp)
+
+plot(review.de, type='n',  xlab="Dim 1", ylab="Dim 2", main="Centroids")
+text(x=review.de, labels=rownames(review.de))
+```
+This analysis confirms our previous assumption that it is hard to cluster the reviews based on the hotels or hotel categories. Once again, we cannot see a clear seperation among them.
+
+### Topic modeling
+
+We initially performed the Topic Modeling analysis on each hotel individually. Since the results were not conclusive we decided to see if better results could be obtained when combining all hotels together.
+
+#### Latent Semantic Analysis (LSA)
+
+As mentioned previously, our analysis of the DTM and TF-IDF matrices revealed that they were very sparse. It is thus interesting to perform dimension reduction techniques, such as LSA. We chose to look at three dimensions.
+Since the first dimension is associated to the length of the documents, we thus represent the dimensions 2 and 3. Unfortunately, we do not see a clear distinction between the texts. They cannot be differentiated by these two dimensions. Moreover, we have tried to perform the analysis on 5 dimensions too. The same inconclusive results can be drawn when plotting dimensions 2 against 3, 3 aginst 4 and 4 against 5.
+
+```{r echo=TRUE}
+reviews.lsa.dfm <- textmodel_lsa(all.dfm, nd=3)
+head(reviews.lsa.dfm$docs)
+head(reviews.lsa.dfm$features)
+reviews.lsa.dfm$sk
+ns <- apply(all.dfm, 1, sum)
+plot(ns~reviews.lsa.dfm$docs[,1])
+biplot(y=reviews.lsa.dfm$docs[,2:3],x=reviews.lsa.dfm$features[,2:3], col=c("grey","red"),
+       xlab = "Dim 2", ylab="Dim 3")
+```
+
+#### Latent Dirichlet Allocation (LDA)
+
+After performing the LSA, we decide to look into the LDA, which is a more recent technique of topic modeling. We must highlight that two assumptions are taken into consideration in this analysis: a small number of topics are present in the corpus and a small number of terms are associated with each topic. For this analysis, we decide to set the number of topics to 4, since we have four hotels. This will enable us to see if we are able to differentiate hotels based on the LDA. 
+
+```{r}
+## convert quateda object to topicmodels object
+K <- 4
+all.dtm <- convert(all.dfm, to = "topicmodels")
+
+lda <- LDA(all.dtm, k = K)
+terms(lda, 6)
+topics(lda,1)
+
+```
+By looking at most representative terms for each topic, we can see that many are overlapping. For instance, "location", "small" and "staff are present at least twice. We will look further into the LDA with the Betas and the Gammas.
+
+##### Betas
+
+The analysis of the Betas allow us to see what are the main terms associated to each topic.
+
+```{r}
+#plot of beta 
+beta.td <- tidy(lda, matrix = "beta") 
+beta.top.terms <- beta.td %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+beta.top.terms %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() +
+  scale_x_reordered()
+```
+Once again, the terms associated to each topic are overlapping. The one topic that seems to differentiate is Topic 2. The latter seems to be associated to the Peninsula Hotel, since the hotel is mentioned and that the words associated to this topic, such as "spa", "service" and "experience" are some of the terms that were the more frequent for this hotel.
+
+##### Gammas
+
+The analysis of the Gammas allow us to see which reviews are associated to which topic.
+
+```{r}
+#plot of gamma
+gamma.td <- tidy(lda, matrix = "gamma")
+
+gamma.td %>%
+  ggplot(aes(document, gamma, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() +
+  scale_x_reordered()
+```
+As we can see, differentiation is once again difficult. The only topic that seems to distinguish itself would be topic 2, that is associated to reviews 51-100, which are the 5-star hotels.
+
+### Keyness
+
+We are now going to look at the keyness, to see if certain terms are key to 2-star hotels compared to 5-star hotels. For this, we transform our data set, where text 1 represents the 2-star hotels and text 2, the 5-star hotels.
+
+```{r}
+#on réunit les 2 étoiles et les 5 étoiles ensembles pour créer uniquement 2 textes
+twostars <- paste(unlist(reviews[1:50, 1]), collapse =" ")
+fivestars <- paste(unlist(reviews[51:100, 1]), collapse =" ")
+
+twoclasses <- rbind(twostars, fivestars)
+
+twoclasses.dfm <- dfm(twoclasses,
+                 remove_punct = TRUE, remove = stopwords("english"),
+                 remove_numbers=TRUE)
+
+#et on compare leur keyness
+keyness <- textstat_keyness(twoclasses.dfm)
+
+textplot_keyness(keyness)
+```
+The keyness analysis confirms our previous analyses, To further explain, the terms that are key to 2-star hotels compared to 5-star hotels, are more functionally-oriented, for instance "clean", "bed" and "room". Whereas the terms that are key to text 2 (5-star hotels) are more guest experienced-oriented. We have, for example, "experience", "spa" or "service", among others. 
+
+
+### Rating analysis
+
+Lastly, we are going to analyze the ratings of the different hotels, since it is an attribute that is going to be used in the modeling section.
+
+```{r, message = FALSE, warning = FALSE}
+Reviews_500_w_ratings %>% group_by(hotel) %>% summarize(Avg_Rating = mean(rating),
+                                                        Median_Rating = median(rating))%>% kable()
+
+```
+
+As we can see the 5-star hotels have unsuprisingly much better ratings in average and in median compared to 2-star hotels. Thus the rating variable appears to be a discriminant feature to differentiate between the two hotel categories.
+

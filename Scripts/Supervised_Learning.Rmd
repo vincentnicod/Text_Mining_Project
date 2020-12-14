@@ -1,0 +1,1311 @@
+---
+title: "Supervised learning"
+author: "Vincent Nicod, Jérémy Bayer"
+date: "12/8/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+```{r packages, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+library(quanteda)
+library(tidyverse)
+library(quanteda.textmodels)
+library(ranger)
+library(here)
+library(caret)
+library(topicmodels)
+library(tidytext)
+library(e1071)
+library(nnet)
+library(zoo)
+library(naivebayes)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#loading data
+
+reviews <- read_rds(here::here("Reviews_500_w_ratings.rds"))
+reviews <- reviews %>% mutate(hotel_nb = case_when(
+    hotel == "Econo" ~ "1",
+    hotel == "St-james" ~ "2",
+    hotel == "four seasons" ~ "3",
+    hotel == "Peninsula" ~ "4")) %>% rename(text = review)
+
+reviews$date <- zoo::as.yearmon(reviews$date_stay, "%B %Y")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#preparing the data
+
+corpus <- corpus(reviews, text_field = "text")
+
+tokens <- tokens(
+  corpus,
+  remove_punct = TRUE,
+  remove_symbols = TRUE,
+  remove_url = TRUE,
+  remove_separators=TRUE
+)
+
+tokens <- tokens_tolower(tokens) %>%
+  tokens_wordstem() %>%
+  tokens_remove(stopwords("english"))
+
+y <- factor(docvars(tokens, "hotel_nb"))
+```
+# Supervised learning
+
+## Hotel classification
+
+In this part, we used supervised learning to classify the reviews according to their content, and some other features. First we tried to predict which hotel each review belongs to, then we grouped the 2-star and 5-star hotels together, and tried to predict only which class they belong to. In order to make the best possible predictions, we tried different algorithms, but we decided to show only the ones with the best accuracies. 
+For all our algorithms, in addition to the review, we used the following features:            
+- The review's length,         
+- The rating given with the review,         
+- The date of the review.          
+
+We tried different combinations of methods and learners:            
+- For the frequencies, DFM, TF and TF-IDF.               
+- As dimension reduction techniques, LSA and LDA.            
+- We tried to include a sentiment analysis.               
+- And we used different algorithms: Random forest, SVM, Naive Bayes and a Neural Network.               
+
+Below, we decided to show two models with a different combination, and our best model, a random forest using TF-IDF, LSA and active learning. 
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF with features
+
+set.seed(1)
+
+df <- data.frame(Hotel = y)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Hotel.fit <- ranger(Hotel ~ ., 
+                     data = df.tr, importance = "impurity")
+
+pred.te <- predict(Hotel.fit, df.te)
+
+confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)
+
+ranger::importance(Hotel.fit)
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF with DFM and LSA
+
+set.seed(1)
+
+dfm <- dfm(tokens)
+
+nd <- 1:200
+acc <- numeric(length(nd))
+
+for (i in 1:length(nd)) {
+  set.seed(1)
+  
+lsa <- textmodel_lsa(dfm, nd= nd[i])
+
+
+df <- data.frame(Hotel = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Hotel.fit <- ranger(Hotel ~ ., 
+                     data = df.tr)
+pred.te <- predict(Hotel.fit, df.te)
+
+  acc[i] <- confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)$overall[1]
+}
+
+plot(acc ~ nd, type='b')
+
+accuracy <- cbind(acc, nd) %>% as.data.frame()
+max_value <- accuracy %>% dplyr::arrange(desc(acc)) %>% head(5)
+print(max_value)
+ 
+#       acc nd
+# 
+# 1	0.8375	64		
+# 2	0.8350	48		
+# 3	0.8325	30		
+# 4	0.8325	58		
+# 5	0.8300	28	
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF with TF-IDF and LSA
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+nd <- 1:200
+acc <- numeric(length(nd))
+
+for (i in 1:length(nd)) {
+  
+  
+lsa <- textmodel_lsa(dfm, nd= nd[i])
+
+
+df <- data.frame(Hotel = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Hotel.fit <- ranger(Hotel ~ ., 
+                     data = df.tr, importance = "impurity")
+pred.te <- predict(Hotel.fit, df.te)
+
+  acc[i] <- confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)$overall[1]
+}
+
+plot(acc ~ nd, type='b')
+
+accuracy <- cbind(acc, nd) %>% as.data.frame()
+max_value <- accuracy %>% dplyr::arrange(desc(acc)) %>% head(5)
+print(max_value)
+
+#     acc   nd
+# 1	0.8675	14		
+# 2	0.8675	15		
+# 3	0.8675	16		
+# 4	0.8675	18		
+# 5	0.8650	19
+```
+
+### RF DFM with LDA
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+set.seed(1)
+
+dfm <- dfm(tokens)
+
+nd <- 2:50
+acc.lda <- numeric(length(nd))
+
+for (K in 1:length(nd)) {
+  
+rev.dtm <- convert(dfm, to = "topicmodels")
+lda <- LDA(rev.dtm, k = nd[K])
+gamma.td <- tidy(lda, matrix = "gamma")
+gamma <- spread(gamma.td, topic, gamma)
+gamma$document <- gamma$document %>% str_replace("text", "") %>% as.numeric()
+gamma <- gamma %>% arrange(document) %>% select(-document)
+
+
+df <- data.frame(Hotel = y, x = gamma)
+
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Hotel.fit <- ranger(Hotel ~ ., 
+                     data = df.tr, importance = "impurity")
+pred.te <- predict(Hotel.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)
+
+  acc.lda[K] <- confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)$overall[1]
+}
+
+confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)
+
+#plot(acc.lda ~ nd, type='b')
+#accuracy <- cbind(acc.lda, nd) %>% as.data.frame()
+#max_value <- accuracy %>% dplyr::arrange(desc(acc.lda)) %>% head(5)
+#print(max_value)
+
+# from 2-50
+# 1	0.8100	43	
+# 2	0.7725	50		
+# 3	0.7550	30		
+# 4	0.7450	38		
+# 5	0.7425	44	
+```
+In this model, we try to use a random forest with the DFM and LDA. We obtain a maximum accuracy of 0.8 with 74 nodes. After different tries, we decided to use TF-IDF instead of DFM and LSA instead of LDA to get a higher accuracy.
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF TF-IDF with sentiment
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
+
+
+df <- data.frame(Hotel = y, sentiment_negative = review.sent[, 1], sentiment_positive = review.sent[,2]) %>% select(-sentiment_positive.doc_id, -sentiment_negative.doc_id)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+)
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Hotel.fit <- ranger(Hotel ~ ., 
+                     data = df.tr, importance = "impurity")
+pred.te <- predict(Hotel.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)
+
+```
+
+### RF TF-IDF with sentiment and LSA
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
+
+
+lsa <- textmodel_lsa(dfm, nd=14)
+
+
+df <- data.frame(Hotel = y, x = lsa$docs, sentiment_negative = review.sent[, 1], sentiment_positive = review.sent[,2]) %>% select(-sentiment_positive.doc_id, -sentiment_negative.doc_id)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+)
+
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Hotel.fit <- ranger(Hotel ~ ., 
+                     data = df.tr, importance = "impurity")
+pred.te <- predict(Hotel.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)
+
+```
+This time, we reach an accuracy of 0.85 with a random forest using TF-IDF, LSA, and the sentiment of the review as a feature. Unfortunately, the sentiment does not increase the accuracy of the model, so we decided to not include it in our final model. 
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF DFM with sentiment and LSA (non)
+
+set.seed(1)
+
+dfm <- dfm(tokens)
+
+review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
+
+
+dim(dfm)
+
+lsa <- textmodel_lsa(dfm, nd=14) 
+
+
+df <- data.frame(Hotel = y, x = lsa$docs, sentiment_negative = review.sent[, 1], sentiment_positive = review.sent[,2]) %>% select(-sentiment_positive.doc_id, -sentiment_negative.doc_id)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+)
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Hotel.fit <- ranger(Hotel ~ ., 
+                     data = df.tr, importance = "impurity")
+pred.te <- predict(Hotel.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)
+
+
+ranger::importance(x = Hotel.fit)
+
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF Active Learning with LSA, TF-IDF
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+  
+lsa <- textmodel_lsa(dfm, nd= 14)
+
+
+df <- data.frame(Hotel = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+eps <- 1e-12
+
+index.tr <- sample(size=round(0.8*length(y)), x=1:length(y), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+
+index.val <- sample(size=50, x=1:nrow(df.te), replace=FALSE)
+df.val <- df.te[index.val,]
+
+## Initial step
+index <- sample(size=50, x=1:length(index.tr), replace=FALSE)
+df.al <- df.tr[index,]
+df.nal <- df.tr[-index,]
+
+hotel.fit.al <- ranger(Hotel ~ ., data = df.al)
+pred.val.al <- predict(hotel.fit.al, df.val, type="response")
+acc.vec <- confusionMatrix(data=pred.val.al$predictions, reference = df.val$Hotel)$overall[1]
+size.vec <- nrow(df.al) 
+
+## loop
+while (nrow(df.al) <= (nrow(df.tr)-50)){ 
+  hotel.fit.al <- ranger(Hotel ~ ., 
+                         data = df.al, probability=TRUE) 
+  pred.nal <- predict(hotel.fit.al, df.nal)$predictions 
+  ent <- -(pred.nal[,1]+eps)*log(pred.nal[,1]+eps) - (pred.nal[,2]+eps)*log(pred.nal[,2]+eps)
+  index <- order(ent, decreasing = TRUE)[1:50]
+  
+  df.al <- rbind(df.al, df.nal[index,])
+  df.nal <- df.nal[-index,]
+  size.vec <- c(size.vec, nrow(df.al))
+
+  hotel.fit.al <- ranger(Hotel ~ ., data = df.al)
+  pred.val.al <- predict(hotel.fit.al, df.val, type="response")
+  acc.vec <- c(acc.vec, confusionMatrix(data=pred.val.al$predictions, reference = df.val$Hotel)$overall[1])
+}
+
+plot(acc.vec~size.vec, type="b", xlab="sample size", ylab="Accuracy", pch=20)
+
+accuracy <- cbind(acc.vec, size.vec) %>% as.data.frame()
+max_value <- accuracy %>% dplyr::arrange(desc(acc.vec)) %>% head(5)
+print(max_value)
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF Active Learning with LSA, TF-IDF + sentiment
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+  
+lsa <- textmodel_lsa(dfm, nd= 14)
+
+review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
+
+df <- data.frame(Hotel = y, x = lsa$docs, sentiment_negative = review.sent[, 1], sentiment_positive = review.sent[,2]) %>% select(-sentiment_positive.doc_id, -sentiment_negative.doc_id)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+eps <- 1e-12
+
+index.tr <- sample(size=round(0.8*length(y)), x=1:length(y), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+
+index.val <- sample(size=50, x=1:nrow(df.te), replace=FALSE)
+df.val <- df.te[index.val,]
+
+## Initial step
+index <- sample(size=50, x=1:length(index.tr), replace=FALSE)
+df.al <- df.tr[index,]
+df.nal <- df.tr[-index,]
+
+hotel.fit.al <- ranger(Hotel ~ ., data = df.al)
+pred.val.al <- predict(hotel.fit.al, df.val, type="response")
+acc.vec <- confusionMatrix(data=pred.val.al$predictions, reference = df.val$Hotel)$overall[1]
+size.vec <- nrow(df.al) 
+
+## loop
+while (nrow(df.al) <= (nrow(df.tr)-50)){
+  hotel.fit.al <- ranger(Hotel ~ ., 
+                         data = df.al, probability=TRUE) 
+  pred.nal <- predict(hotel.fit.al, df.nal)$predictions 
+  ent <- -(pred.nal[,1]+eps)*log(pred.nal[,1]+eps) - (pred.nal[,2]+eps)*log(pred.nal[,2]+eps)
+  index <- order(ent, decreasing = TRUE)[1:50]
+  
+  df.al <- rbind(df.al, df.nal[index,])
+  df.nal <- df.nal[-index,]
+  size.vec <- c(size.vec, nrow(df.al))
+
+  hotel.fit.al <- ranger(Hotel ~ ., data = df.al)
+  pred.val.al <- predict(hotel.fit.al, df.val, type="response")
+  acc.vec <- c(acc.vec, confusionMatrix(data=pred.val.al$predictions, reference = df.val$Hotel)$overall[1])
+}
+
+plot(acc.vec~size.vec, type="b", xlab="sample size", ylab="Accuracy", pch=20)
+
+accuracy <- cbind(acc.vec, size.vec) %>% as.data.frame()
+max_value <- accuracy %>% dplyr::arrange(desc(acc.vec)) %>% head(5)
+print(max_value)
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#SVM 
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
+
+lsa <- textmodel_lsa(dfm, nd=14) 
+
+df <- data.frame(Hotel = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+)
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+
+
+svm.model <- svm(Hotel ~ ., data = df.tr, kernel="radial")
+svm.pred  <- predict(svm.model, df.te)
+confusionMatrix(data=svm.pred, reference = df.te$Hotel)
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# neural network
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+lsa <- textmodel_lsa(dfm, nd=14) 
+
+df <- data.frame(Hotel = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating"))
+            )
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+
+train_control <- trainControl(method = "cv",
+                              number = 5)
+
+hp_nn <- expand.grid(size = 5:10, decay = seq(0, 0.5, 0.05))
+expand.grid()
+
+fit_nn <- caret::train(form = Hotel ~.,
+                data = df.tr,
+                method = "nnet",
+                preProcess = c("center", "scale"),
+                trControl = train_control,
+                tuneGrid = hp_nn)
+
+
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF TF-IDF with LSA 
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+dim(dfm)
+
+lsa <- textmodel_lsa(dfm, nd=14)
+
+
+df <- data.frame(Hotel = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Hotel.fit <- ranger(Hotel ~ ., 
+                     data = df.tr)
+pred.te <- predict(Hotel.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)
+
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# naive bayes
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+dim(dfm)
+
+lsa <- textmodel_lsa(dfm, nd=14)
+
+
+df <- data.frame(Hotel = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Hotel.fit <- naive_bayes(Hotel ~ ., 
+                     data = df.tr, usekernel = F)
+pred.te <- predict(Hotel.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Hotel)
+
+```
+
+
+### BEST MODEL: ACTIVE LEARNING WITH RF TF-IDF AND LSA W/ 14 TOPICS
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+  
+lsa <- textmodel_lsa(dfm, nd= 14)
+
+df <- data.frame(Hotel = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+eps <- 1e-12
+
+index.tr <- sample(size=round(0.8*length(y)), x=1:length(y), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+
+index.val <- sample(size=50, x=1:nrow(df.te), replace=FALSE)
+df.val <- df.te[index.val,]
+
+## Initial step
+index <- sample(size=50, x=1:length(index.tr), replace=FALSE)
+df.al <- df.tr[index,]
+df.nal <- df.tr[-index,]
+
+hotel.fit.al <- ranger(Hotel ~ ., data = df.al, importance = "impurity")
+pred.val.al <- predict(hotel.fit.al, df.val, type="response")
+acc.vec <- confusionMatrix(data=pred.val.al$predictions, reference = df.val$Hotel)$overall[1]
+size.vec <- nrow(df.al)
+
+## loop
+while (nrow(df.al) <= (nrow(df.tr)-50)){ 
+  hotel.fit.al <- ranger(Hotel ~ ., 
+                         data = df.al, probability=TRUE, importance = "impurity") 
+  pred.nal <- predict(hotel.fit.al, df.nal)$predictions 
+  ent <- -(pred.nal[,1]+eps)*log(pred.nal[,1]+eps) - (pred.nal[,2]+eps)*log(pred.nal[,2]+eps)
+  index <- order(ent, decreasing = TRUE)[1:50]
+  
+  df.al <- rbind(df.al, df.nal[index,])
+  df.nal <- df.nal[-index,]
+  size.vec <- c(size.vec, nrow(df.al))
+
+  hotel.fit.al <- ranger(Hotel ~ ., data = df.al, importance = "impurity")
+  pred.val.al <- predict(hotel.fit.al, df.val, type="response")
+  acc.vec <- c(acc.vec, confusionMatrix(data=pred.val.al$predictions, reference = df.val$Hotel)$overall[1])
+}
+
+plot(acc.vec~size.vec, type="b", xlab="sample size", ylab="Accuracy", pch=20)
+
+accuracy <- cbind(acc.vec, size.vec) %>% as.data.frame()
+max_value <- accuracy %>% dplyr::arrange(desc(acc.vec)) %>% head(5)
+#print(max_value)
+
+#sort(importance(hotel.fit.al), decreasing = TRUE)
+
+confusionMatrix(data=pred.val.al$predictions, reference = df.val$Hotel)
+```
+This is our best model, with which we reach an accuracy of 0.9, with a minimum sample of 400 observations. We obtain these results using active learning on a random forest with TF-IDF and LSA of 14 topics. 
+
+Looking at the confusion matrix of our 3 models, we can see that we are very good at distinguishing between 2-star and 5-star hotels, but the model is less good at predicting which hotel it is precisely. For the rest of the analysis, we will therefore group the two 2-star hotels and the two 5-star hotels together, and we will try to find the best model to predict which class the hotel belongs to.
+
+## Rating classification
+
+With the hotels grouped by categories, we tested the same combinations as before. We will show one example using SVM and our best result.
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#loading data
+
+reviews <- read_rds(here::here("Reviews_500_w_ratings.rds"))
+reviews <- reviews %>% mutate(hotel_nb = case_when(
+    hotel == "Econo" ~ "1",
+    hotel == "St-james" ~ "2",
+    hotel == "four seasons" ~ "3",
+    hotel == "Peninsula" ~ "4")) %>% rename(text = review)
+
+reviews$date <- zoo::as.yearmon(reviews$date_stay, "%B %Y")
+reviews <- reviews %>% mutate(Type = ifelse(hotel %in% c("Econo", "St-james"), 0, 1))
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#preparing the data
+
+corpus <- corpus(reviews, text_field = "text")
+
+tokens <- tokens(
+  corpus,
+  remove_punct = TRUE,
+  remove_symbols = TRUE,
+  remove_url = TRUE,
+  remove_separators=TRUE
+)
+
+tokens <- tokens_tolower(tokens) %>%
+  tokens_wordstem() %>%
+  tokens_remove(stopwords("english"))
+
+y <- factor(docvars(tokens, "Type"))
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# RF with features
+
+set.seed(1)
+
+df <- data.frame(Type = y)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Type.fit <- ranger(Type ~ ., 
+                     data = df.tr, importance = "impurity")
+
+pred.te <- predict(Type.fit, df.te)
+
+confusionMatrix(data=pred.te$predictions, reference = df.te$Type)
+
+ranger::importance(Type.fit)
+```
+
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# RF with DFM and LSA
+
+set.seed(1)
+
+dfm <- dfm(tokens)
+
+nd <- 1:100
+acc <- numeric(length(nd))
+
+for (i in 1:length(nd)) {
+  
+lsa <- textmodel_lsa(dfm, nd= nd[i]) # to finetune
+
+
+df <- data.frame(Type = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Type.fit <- ranger(Type ~ ., 
+                     data = df.tr)
+pred.te <- predict(Type.fit, df.te)
+
+  acc[i] <- confusionMatrix(data=pred.te$predictions, reference = df.te$Type)$overall[1]
+}
+
+plot(acc ~ nd, type='b')
+
+accuracy <- cbind(acc, nd) %>% as.data.frame()
+max_value <- accuracy %>% dplyr::arrange(desc(acc)) %>% head(5)
+print(max_value)
+ 
+#       acc nd
+# 1	0.9425	15		
+# 2	0.9400	20		
+# 3	0.9400	70		
+# 4	0.9400	94		
+# 5	0.9375	10	
+# 	
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# RF with TF-IDF and LSA
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+nd <- 1:100
+acc <- numeric(length(nd))
+
+for (i in 1:length(nd)) {
+  
+lsa <- textmodel_lsa(dfm, nd= nd[i]) 
+
+
+df <- data.frame(Type = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Type.fit <- ranger(Type ~ ., 
+                     data = df.tr, importance = "impurity")
+pred.te <- predict(Type.fit, df.te)
+
+  acc[i] <- confusionMatrix(data=pred.te$predictions, reference = df.te$Type)$overall[1]
+}
+
+plot(acc ~ nd, type='b')
+
+accuracy <- cbind(acc, nd) %>% as.data.frame()
+max_value <- accuracy %>% dplyr::arrange(desc(acc)) %>% head(5)
+print(max_value)
+
+#     acc   nd
+# 1	0.9600	18		
+# 2	0.9575	15		
+# 3	0.9575	17		
+# 4	0.9550	14		
+# 5	0.9550	21		
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF DFM with LDA
+
+set.seed(1)
+
+dfm <- dfm(tokens)
+
+nd <- 2:75
+acc.lda <- numeric(length(nd))
+
+for (K in 1:length(nd)) {
+  
+rev.dtm <- convert(dfm, to = "topicmodels")
+lda <- LDA(rev.dtm, k = nd[K])
+gamma.td <- tidy(lda, matrix = "gamma")
+gamma <- spread(gamma.td, topic, gamma)
+gamma$document <- gamma$document %>% str_replace("text", "") %>% as.numeric()
+gamma <- gamma %>% arrange(document) %>% select(-document)
+
+
+df <- data.frame(Type = y, x = gamma)
+
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Type.fit <- ranger(Type ~ ., 
+                     data = df.tr, importance = "impurity")
+pred.te <- predict(Type.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Type)
+
+  acc.lda[K] <- confusionMatrix(data=pred.te$predictions, reference = df.te$Type)$overall[1]
+}
+
+plot(acc.lda ~ nd, type='b')
+accuracy <- cbind(acc.lda, nd) %>% as.data.frame()
+max_value <- accuracy %>% dplyr::arrange(desc(acc.lda)) %>% head(5)
+print(max_value)
+# from 1-75
+# 1	0.9475	71		
+# 2	0.9475	74		
+# 3	0.9400	64		
+# 4	0.9400	73		
+# 5	0.9375	59	
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF TF-IDF with sentiment
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
+
+
+df <- data.frame(Type = y, sentiment_negative = review.sent[, 1], sentiment_positive = review.sent[,2]) %>% select(-sentiment_positive.doc_id, -sentiment_negative.doc_id)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+)
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Type.fit <- ranger(Type ~ ., 
+                     data = df.tr, importance = "impurity")
+pred.te <- predict(Type.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Type)
+
+```
+
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# RF TF-IDF with sentiment and LSA
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
+
+
+dim(dfm)
+
+lsa <- textmodel_lsa(dfm, nd=18) # to finetune
+
+
+df <- data.frame(Type = y, x = lsa$docs, sentiment_negative = review.sent[, 1], sentiment_positive = review.sent[,2]) %>% select(-sentiment_positive.doc_id, -sentiment_negative.doc_id)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+)
+
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Type.fit <- ranger(Type ~ ., 
+                     data = df.tr, importance = "impurity")
+pred.te <- predict(Type.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Type)
+
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+set.seed(1)
+
+dfm <- dfm(tokens)
+
+review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
+
+
+dim(dfm)
+
+lsa <- textmodel_lsa(dfm, nd=18) # to finetune
+
+
+df <- data.frame(Type = y, x = lsa$docs, sentiment_negative = review.sent[, 1], sentiment_positive = review.sent[,2]) %>% select(-sentiment_positive.doc_id, -sentiment_negative.doc_id)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+)
+
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Type.fit <- ranger(Type ~ ., 
+                     data = df.tr, importance = "impurity")
+pred.te <- predict(Type.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Type)
+
+
+ranger::importance(x = Type.fit)
+
+```
+
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF Active Learning with LSA, TF-IDF
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+  
+lsa <- textmodel_lsa(dfm, nd= 18)
+
+
+df <- data.frame(Type = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+eps <- 1e-12
+
+index.tr <- sample(size=round(0.8*length(y)), x=1:length(y), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+
+index.val <- sample(size=50, x=1:nrow(df.te), replace=FALSE)
+df.val <- df.te[index.val,]
+
+## Initial step
+index <- sample(size=50, x=1:length(index.tr), replace=FALSE)
+df.al <- df.tr[index,]
+df.nal <- df.tr[-index,]
+
+Type.fit.al <- ranger(Type ~ ., data = df.al)
+pred.val.al <- predict(Type.fit.al, df.val, type="response")
+acc.vec <- confusionMatrix(data=pred.val.al$predictions, reference = df.val$Type)$overall[1]
+size.vec <- nrow(df.al)
+
+## loop
+while (nrow(df.al) <= (nrow(df.tr)-50)){
+  Type.fit.al <- ranger(Type ~ ., 
+                         data = df.al, probability=TRUE) 
+  pred.nal <- predict(Type.fit.al, df.nal)$predictions 
+  ent <- -(pred.nal[,1]+eps)*log(pred.nal[,1]+eps) - (pred.nal[,2]+eps)*log(pred.nal[,2]+eps)
+  index <- order(ent, decreasing = TRUE)[1:50]
+  
+  df.al <- rbind(df.al, df.nal[index,])
+  df.nal <- df.nal[-index,]
+  size.vec <- c(size.vec, nrow(df.al))
+
+  Type.fit.al <- ranger(Type ~ ., data = df.al)
+  pred.val.al <- predict(Type.fit.al, df.val, type="response")
+  acc.vec <- c(acc.vec, confusionMatrix(data=pred.val.al$predictions, reference = df.val$Type)$overall[1])
+}
+
+plot(acc.vec~size.vec, type="b", xlab="sample size", ylab="Accuracy", pch=20)
+
+accuracy <- cbind(acc.vec, size.vec) %>% as.data.frame()
+max_value <- accuracy %>% dplyr::arrange(desc(acc.vec)) %>% head(5)
+print(max_value)
+```
+
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF Active Learning with LSA, TF-IDF + sentiment
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+  
+lsa <- textmodel_lsa(dfm, nd= 18) # to finetune
+
+review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
+
+df <- data.frame(Type = y, x = lsa$docs, sentiment_negative = review.sent[, 1], sentiment_positive = review.sent[,2]) %>% select(-sentiment_positive.doc_id, -sentiment_negative.doc_id)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+eps <- 1e-12
+
+index.tr <- sample(size=round(0.8*length(y)), x=1:length(y), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+
+index.val <- sample(size=50, x=1:nrow(df.te), replace=FALSE)
+df.val <- df.te[index.val,]
+
+## Initial step
+index <- sample(size=50, x=1:length(index.tr), replace=FALSE)
+df.al <- df.tr[index,]
+df.nal <- df.tr[-index,]
+
+Type.fit.al <- ranger(Type ~ ., data = df.al)
+pred.val.al <- predict(Type.fit.al, df.val, type="response")
+acc.vec <- confusionMatrix(data=pred.val.al$predictions, reference = df.val$Type)$overall[1]
+size.vec <- nrow(df.al)
+
+## loop
+while (nrow(df.al) <= (nrow(df.tr)-50)){
+  Type.fit.al <- ranger(Type ~ ., 
+                         data = df.al, probability=TRUE) 
+  pred.nal <- predict(Type.fit.al, df.nal)$predictions 
+  ent <- -(pred.nal[,1]+eps)*log(pred.nal[,1]+eps) - (pred.nal[,2]+eps)*log(pred.nal[,2]+eps)
+  index <- order(ent, decreasing = TRUE)[1:50]
+  
+  df.al <- rbind(df.al, df.nal[index,])
+  df.nal <- df.nal[-index,]
+  size.vec <- c(size.vec, nrow(df.al))
+
+  Type.fit.al <- ranger(Type ~ ., data = df.al)
+  pred.val.al <- predict(Type.fit.al, df.val, type="response")
+  acc.vec <- c(acc.vec, confusionMatrix(data=pred.val.al$predictions, reference = df.val$Type)$overall[1])
+}
+
+plot(acc.vec~size.vec, type="b", xlab="sample size", ylab="Accuracy", pch=20)
+
+accuracy <- cbind(acc.vec, size.vec) %>% as.data.frame()
+max_value <- accuracy %>% dplyr::arrange(desc(acc.vec)) %>% head(5)
+print(max_value)
+```
+
+### SVM
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+review.sent <- tokens_lookup(tokens, dictionary = data_dictionary_LSD2015) %>% dfm()
+
+lsa <- textmodel_lsa(dfm, nd=18) # to finetune
+
+df <- data.frame(Type = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+)
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+
+
+svm.model <- svm(Type ~ ., data = df.tr, kernel="radial")
+svm.pred  <- predict(svm.model, df.te)
+confusionMatrix(data=svm.pred, reference = df.te$Type)
+```
+With this SVM model using TF-IDF and LSA, we reach an accuracy of 0.97. We can see that our model is very good at predicting only the class of the hotel.
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# neural network
+
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+lsa <- textmodel_lsa(dfm, nd=18) # to finetune
+
+df <- data.frame(Type = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating"))
+            )
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+
+train_control <- trainControl(method = "cv",
+                              number = 5)
+
+hp_nn <- expand.grid(size = 5:10, decay = seq(0, 0.5, 0.05))
+expand.grid()
+
+fit_nn <- caret::train(form = Type ~.,
+                data = df.tr,
+                method = "nnet",
+                preProcess = c("center", "scale"),
+                trControl = train_control,
+                tuneGrid = hp_nn)
+
+confusionMatrix(predict.train(fit_nn, newdata = df.te),
+                df.te$Type)
+
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#RF TF-IDF with LSA
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+dim(dfm)
+
+lsa <- textmodel_lsa(dfm, nd=18) # to finetune
+
+
+df <- data.frame(Type = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Type.fit <- ranger(Type ~ ., 
+                     data = df.tr)
+pred.te <- predict(Type.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Type)
+
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# naive bayes
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+
+dim(dfm)
+
+lsa <- textmodel_lsa(dfm, nd=18) # to finetune
+
+
+df <- data.frame(Type = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+
+index.tr <- sample(size=round(0.8*length(y)), x=c(1:length(y)), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+Type.fit <- naive_bayes(Type ~ ., 
+                     data = df.tr, usekernel = F)
+pred.te <- predict(Type.fit, df.te)
+confusionMatrix(data=pred.te$predictions, reference = df.te$Type)
+
+```
+
+
+### BEST MODEL: ACTIVE LEARNING WITH RF TF-IDF AND LSA W/ 18 TOPICS
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+set.seed(1)
+
+dfm <- dfm(tokens) %>% dfm_tfidf()
+  
+lsa <- textmodel_lsa(dfm, nd= 18)
+
+
+df <- data.frame(Type = y, x = lsa$docs)
+
+df <- cbind(df,
+            length = sapply(tokens, length),
+            rating = docvars(tokens, c("rating")),
+            date = docvars(tokens, c("date"))
+            )
+
+eps <- 1e-12
+
+index.tr <- sample(size=round(0.8*length(y)), x=1:length(y), replace=FALSE)
+df.tr <- df[index.tr,]
+df.te <- df[-index.tr,]
+
+index.val <- sample(size=50, x=1:nrow(df.te), replace=FALSE)
+df.val <- df.te[index.val,]
+
+## Initial step
+index <- sample(size=50, x=1:length(index.tr), replace=FALSE)
+df.al <- df.tr[index,]
+df.nal <- df.tr[-index,]
+
+Type.fit.al <- ranger(Type ~ ., data = df.al, importance = "impurity")
+pred.val.al <- predict(Type.fit.al, df.val, type="response")
+acc.vec <- confusionMatrix(data=pred.val.al$predictions, reference = df.val$Type)$overall[1]
+size.vec <- nrow(df.al)
+
+## loop
+while (nrow(df.al) <= (nrow(df.tr)-50)){ 
+  Type.fit.al <- ranger(Type ~ ., 
+                         data = df.al, probability=TRUE, importance = "impurity") 
+  pred.nal <- predict(Type.fit.al, df.nal)$predictions 
+  ent <- -(pred.nal[,1]+eps)*log(pred.nal[,1]+eps) - (pred.nal[,2]+eps)*log(pred.nal[,2]+eps)
+  index <- order(ent, decreasing = TRUE)[1:50]
+  
+  df.al <- rbind(df.al, df.nal[index,])
+  df.nal <- df.nal[-index,]
+  size.vec <- c(size.vec, nrow(df.al))
+
+  Type.fit.al <- ranger(Type ~ ., data = df.al, importance = "impurity")
+  pred.val.al <- predict(Type.fit.al, df.val, type="response")
+  acc.vec <- c(acc.vec, confusionMatrix(data=pred.val.al$predictions, reference = df.val$Type)$overall[1])
+}
+
+plot(acc.vec~size.vec, type="b", xlab="sample size", ylab="Accuracy", pch=20)
+
+accuracy <- cbind(acc.vec, size.vec) %>% as.data.frame()
+max_value <- accuracy %>% dplyr::arrange(desc(acc.vec)) %>% head(5)
+#print(max_value)
+```
+
+With our best model, a random forest with TF-IDF, LSA and applying active learning, we reach an accuracy of 100% with 150 samples. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+sort(importance(Type.fit.al), decreasing = TRUE)
+```
+If we take a closer look at the variables, we see that the features of the date and the ranking are of great importance in the classification. Unfortunately, we cannot interpret the x variables because they are pseudo-variables created by LSA. 

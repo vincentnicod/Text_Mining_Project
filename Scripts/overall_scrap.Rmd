@@ -1,0 +1,125 @@
+---
+title: "Scrapping tool"
+author: "Vincent Nicod"
+date: "11/26/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+library(tidyverse)
+library(rvest)
+```
+
+
+get_review function
+```{r eval=FALSE}
+get_review <- function(url, n) {
+  review <- data.frame()
+  
+  if (n %% 5 != 0) {stop("n need to be a multiple of 5")}
+  
+  number_pages <- n/5
+  
+  for (i in seq_len(number_pages)) {
+    blocks_url <- str_split(url, "-") %>% unlist()
+    start_url <- paste0(blocks_url[1], "-", blocks_url[2], "-", blocks_url[3], "-", blocks_url[4])
+    end_url <- paste0("-", blocks_url[5])
+    
+    if (i == 1) {
+      review_url <- paste0(start_url, end_url, "#REVIEWS")
+    }
+    
+    else {
+      review_url <- paste0(start_url, "-or", (i-1)*5, end_url, "#REVIEWS")
+    }
+    
+    html <- read_html(review_url)
+    
+    for(r in 3:7){
+    
+    temp <- data_frame()
+    temp_rev <- data_frame()
+    temp_date <- data_frame()
+    temp_rating <- data_frame()
+    
+    revi <- html_nodes(html, paste0('#component_15 > div > div:nth-child(3) > div:nth-child(',r,') > div.oETBfkHU > div._3hDPbqWO > div._2f_ruteS._1bona3Pu > div.cPQsENeY > q'))
+    temp_rev <- html_text(revi)
+    
+    date_r <- html_nodes(html, paste0('#component_15 > div > div:nth-child(3) > div:nth-child(',r,') > div.oETBfkHU > div._3hDPbqWO > div._1O8E5N17 > span._34Xs-BQm'))
+    temp_date <- html_text(date_r) %>% str_sub(start= 15)
+    
+    temp <- temp_rev %>% merge(temp_date)
+    
+    rating_r <- html_nodes(html, paste0('#component_15 > div > div:nth-child(3) > div:nth-child(',r,') > div.oETBfkHU > div._2UEC-y30 > div > span'))
+    temp_rating <- rating_r %>% xml_attr("class") %>% str_sub(start = -2) %>% as.numeric()/10
+    
+    temp <- temp %>% cbind(temp_rating)
+    
+    colnames(temp) <- c("review", "date_stay", "rating")
+    
+    review <- review %>% rbind(temp)
+    }
+  }
+  return(review)
+}
+```
+
+
+
+```{r hotels}
+url <- c(
+  "https://www.tripadvisor.com/Hotel_Review-g60763-d93359-Reviews-Econo_Lodge_Times_Square-New_York_City_New_York.html",
+  "https://www.tripadvisor.com/Hotel_Review-g60763-d290978-Reviews-Hotel_St_James-New_York_City_New_York.html",
+  "https://www.tripadvisor.com/Hotel_Review-g60763-d10330604-Reviews-Four_Seasons_Hotel_New_York_Downtown-New_York_City_New_York.html",
+  "https://www.tripadvisor.com/Hotel_Review-g60763-d113311-Reviews-The_Peninsula_New_York-New_York_City_New_York.html"
+)
+```
+
+
+get 50 reviews per hotel
+```{r}
+n <- 50
+
+econo_review <- get_review(url[1], n)
+st_james_review <- get_review(url[2], n)
+four_seasons_review <- get_review(url[3], n)
+peninsula_review <- get_review(url[4], n)
+```
+
+
+save environment 
+```{r}
+save(econo_review, st_james_review, four_seasons_review, peninsula_review, file = here::here("Data/data_scrap_50.RData"))
+```
+
+
+Get all reviews
+
+```{r}
+n <- 500
+
+econo_review <- get_review(url[1], n)
+st_james_review <- get_review(url[2], n)
+four_seasons_review <- get_review(url[3], n)
+peninsula_review <- get_review(url[4], n)
+```
+
+
+merge and save reviews
+```{r}
+econo_review_ <- econo_review %>% mutate(hotel = "Econo")
+st_james_review_ <- st_james_review %>% mutate(hotel = "St-james")
+four_seasons_review_ <- four_seasons_review %>% mutate(hotel = "four seasons")
+peninsula_review_ <- peninsula_review %>% mutate(hotel = "Peninsula")
+
+reviews <- rbind(econo_review_, st_james_review_, four_seasons_review_, peninsula_review_)
+saveRDS(reviews, file = here::here("Data/Reviews_500_w_ratings.rds"))
+```
+
+
+
+

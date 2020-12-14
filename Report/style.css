@@ -1,0 +1,148 @@
+body {
+  text-align: justify
+}
+
+#main a {
+padding-top: 5px;
+}
+
+#postamble .author {
+font-size: 100%;
+margin-bottom: -22px;
+margin-top: -10px;
+}
+
+#postamble .date {
+font-size: 100%;
+margin-bottom: -22px;
+}
+#postamble {
+left: 0;
+width: 300px;
+margin-bottom:-15px;
+}
+
+#sidebar {
+width: 300px;
+}
+
+#content {
+height: 100%;
+margin-left: 300px;
+max-width: 1200px;
+min-height: 100%;
+}
+
+.nav li {
+  font-size: 18px;
+}
+
+.nav li ul li {
+  font-size: 16px;
+}
+
+#sidebar h2 a {
+font-size: 16.5px;
+}
+
+#table-of-contents ul {
+padding-top: 10px;
+}
+
+h1.title {
+  padding-left: 50px;
+  padding-right: 30px;
+}
+
+#table-of-contents ul li ul {
+padding-top: 0px;
+}
+
+#main {
+padding-left: 50px;
+padding-right: 30px;
+}
+
+#sidebar h2 {
+background-color: #003594;
+  }
+
+#sidebar {
+background-color: #323232;
+  }
+
+#sidebar a {
+color: #ffffff;
+  }
+
+
+#postamble {
+background-color: #252525;
+  border-top: #323232;
+  }
+
+h1, h2, h3, h4, h5, h6, legend{
+  color: #003594;
+}
+
+#main a {
+color: #003594;
+  background-image: linear-gradient(180deg,#003594,#003594);
+                                    }
+
+#sidebar .mysubtitle a {
+color: #ffffff;
+  }
+
+#main .nav-pills > li.active > a, #main .nav-pills > li.active > a:hover, #main .nav-pills > li.active > a:focus {
+background-color: #003594;
+  }
+
+#main .nav-pills > li > a:hover {
+background-color: #003594;
+  }
+
+#main .nav-pills {
+margin-left: -15px;
+}
+
+#main ul li, #content .toctree-wrapper ul li, article ul li {
+margin-left: 15px;
+}
+
+code {
+  color : #003594;
+}
+
+body {
+  background: #fcfcfc;
+}
+
+.title img {
+  display: none;
+}
+
+#sidebar h2 {
+padding: inherit;
+}
+
+.title p {
+  font-size: 35px;
+  text-align: center;
+}
+
+#table-of-contents li {
+list-style: none;
+margin-left: 0px;
+}
+
+.mytitle {
+    margin-top: 5px;
+    margin-bottom: 5px;
+    font-size: 30px;
+}
+
+#main .nav-pills > li > a {
+    margin-bottom: 6px;
+    font-size: 16px;
+}
